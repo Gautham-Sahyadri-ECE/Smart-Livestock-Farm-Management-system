@@ -1,1 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Adyar Farms Dashboard 🐄</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
+  <link rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fa;
+      padding: 20px;
+    }
+    .header { text-align: left; margin-bottom: 25px; }
+    .header h1 { font-size: 32px; margin-bottom: 4px; }
+    .header p { color: #555; }
+
+    #map {
+      height: 420px;
+      width: 100%;
+      border-radius: 10px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    }
+
+    .section {
+      background: #ffffff;
+      padding: 18px;
+      border-radius: 10px;
+      margin-bottom: 18px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+    }
+    .section h2 {
+      font-size: 18px;
+      margin-bottom: 10px;
+      border-bottom: 2px solid #3498db;
+      padding-bottom: 6px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .stat {
+      background: #f3f8ff;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      border-left: 4px solid #3498db;
+      font-size: 14px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      background: #27ae60;
+      color: white;
+      font-weight: 600;
+    }
+    button.active { background: #e74c3c; }
+
+    .alert {
+      padding: 12px;
+      border-radius: 8px;
+      text-align: center;
+      font-weight: 600;
+    }
+    .alert.safe {
+      background: #e6ffed;
+      color: #1b7f3b;
+      border: 1px solid #9ae6b4;
+    }
+    .alert.danger {
+      background: #ffe6e6;
+      color: #a30000;
+      border: 1px solid #feb2b2;
+    }
+
+    input {
+      padding: 6px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      width: 100%;
+      font-size: 13px;
+    }
+    label { font-size: 13px; color: #444; }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h1>Adyar Farms Dashboard</h1>
+    <p>Live cow GPS tracking + farm sensors | Karnataka</p>
+  </div>
+
+  <div class="section">
+    <h2>Map – Cow Locations & Geofence</h2>
+    <div id="map"></div>
+  </div>
+
+  <div class="section">
+    <h2>Farm Sensors</h2>
+    <div class="stats">
+      <div class="stat"><b>Farm Temp</b><br /><span id="farmTemp">--</span> °C</div>
+      <div class="stat"><b>Humidity</b><br /><span id="farmHum">--</span> %</div>
+      <div class="stat"><b>Soil Moisture</b><br /><span id="soilMoist">--</span> %</div>
+      <div class="stat"><b>Rain</b><br /><span id="rain">--</span></div>
+      <div class="stat"><b>Pump Status</b><br /><span id="pumpStat">--</span></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Irrigation Control</h2>
+    <div class="controls">
+      <button id="pumpBtn" onclick="togglePump()">Pump ON/OFF</button>
+      <span><b>Mode:</b> <span id="irrMode">--</span></span>
+      <span><b>Manual:</b> <span id="manualPump">--</span></span>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Alerts</h2>
+    <div id="alertContainer" class="alert safe">All systems normal</div>
+  </div>
+
+  <div class="section">
+    <h2>Cow Records (Manual)</h2>
+
+    <div style="margin-bottom:10px;">
+      <label>Select Cow</label><br>
+      <select id="cowSelect" style="padding:6px;border-radius:6px;border:1px solid #ccc;min-width:160px;">
+      </select>
+      <button onclick="loadCow()" style="margin-left:6px;">Load</button>
+      <button onclick="newCow()"  style="margin-left:6px;">New Cow</button>
+      <button onclick="deleteCow()" style="margin-left:6px;background:#e74c3c;">Delete Cow</button>
+      <span id="cowActionStatus" style="margin-left:10px;font-size:13px;color:#555;"></span>
+    </div>
+
+    <div class="stats" style="margin-bottom:10px;">
+      <div class="stat">
+        <b>Name</b><br>
+        <span id="cowNameView">--</span>
+      </div>
+      <div class="stat">
+        <b>ID</b><br>
+        <span id="cowIdView">--</span>
+      </div>
+      <div class="stat">
+        <b>Last Vaccinated</b><br>
+        <span id="cowVaccView">--</span>
+      </div>
+      <div class="stat">
+        <b>Previous Disease</b><br>
+        <span id="cowDiseaseView">--</span>
+      </div>
+      <div class="stat">
+        <b>Notes</b><br>
+        <span id="cowNotesView">--</span>
+      </div>
+    </div>
+
+    <h3>Edit / Add Cow</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:10px;">
+      <div>
+        <label>Cow ID (e.g. cow1)</label><br>
+        <input id="cowIdInput">
+      </div>
+      <div>
+        <label>Name</label><br>
+        <input id="cowNameInput">
+      </div>
+      <div>
+        <label>Last Vaccinated</label><br>
+        <input id="cowVaccInput" placeholder="YYYY-MM-DD">
+      </div>
+      <div>
+        <label>Previous Disease</label><br>
+        <input id="cowDiseaseInput">
+      </div>
+      <div>
+        <label>Notes</label><br>
+        <input id="cowNotesInput">
+      </div>
+    </div>
+
+    <button style="margin-top:10px;" onclick="saveCow()">Save Cow</button>
+    <span id="cowSaveStatus" style="margin-left:10px;font-size:13px;color:#555;"></span>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Firebase init (module) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getDatabase, ref, onValue, set, get, remove } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyC-uYeWAQOtZYwXBDUgbT6RUvNmFUjpUYU",
+      authDomain: "adyar-farms.firebaseapp.com",
+      projectId: "adyar-farms",
+      storageBucket: "adyar-farms.firebasestorage.app",
+      messagingSenderId: "1060464699827",
+      appId: "1:1060464699827:web:2d612b7df0087cb17483c6",
+      measurementId: "G-X5QB826QQD",
+      databaseURL: "https://adyar-farms-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    window._firebase = { db, ref, onValue, set, get, remove };
+    window.firebaseReady = true;
+  </script>
+
+  <!-- Main app logic -->
+  <script>
+    let map, cowLayer, geofenceLayer;
+    let manualPumpState = false;
+    let currentCowId = "";
+
+    function updateCowView(d) {
+      const data = d || {};
+      document.getElementById("cowIdView").textContent      = currentCowId || "--";
+      document.getElementById("cowNameView").textContent    = data.name || "--";
+      document.getElementById("cowVaccView").textContent    = data.lastVaccinated || "--";
+      document.getElementById("cowDiseaseView").textContent = data.previousDisease || "--";
+      document.getElementById("cowNotesView").textContent   = data.notes || "--";
+
+      document.getElementById("cowIdInput").value      = currentCowId || "";
+      document.getElementById("cowNameInput").value    = data.name || "";
+      document.getElementById("cowVaccInput").value    = data.lastVaccinated || "";
+      document.getElementById("cowDiseaseInput").value = data.previousDisease || "";
+      document.getElementById("cowNotesInput").value   = data.notes || "";
+    }
+
+    function updatePumpButton() {
+      const btn = document.getElementById("pumpBtn");
+      if (!btn) return;
+      if (manualPumpState) {
+        btn.classList.add("active");
+        btn.textContent = "Pump OFF";
+      } else {
+        btn.classList.remove("active");
+        btn.textContent = "Pump ON";
+      }
+    }
+
+    function initDashboard(db, ref, onValue, set, get, remove) {
+      map = L.map("map").setView([13.0, 74.8], 15);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap contributors"
+      }).addTo(map);
+
+      cowLayer = L.layerGroup().addTo(map);
+      geofenceLayer = L.layerGroup().addTo(map);
+
+      if (!db) {
+        console.warn("Firebase not available, running map only");
+        return;
+      }
+
+      onValue(ref(db, "farmSystem/livestock"), snap => {
+        const livestock = snap.val() || {};
+        cowLayer.clearLayers();
+
+        const select = document.getElementById("cowSelect");
+        if (select) {
+          const prev = currentCowId;
+          select.innerHTML = "";
+          const ids = Object.keys(livestock);
+
+          if (ids.length === 0) {
+            const opt = document.createElement("option");
+            opt.value = "";
+            opt.textContent = "No cows";
+            select.appendChild(opt);
+            currentCowId = "";
+            updateCowView(null);
+          } else {
+            ids.forEach(id => {
+              const opt = document.createElement("option");
+              opt.value = id;
+              opt.textContent = id;
+              select.appendChild(opt);
+            });
+            currentCowId = livestock[prev] ? prev : ids[0];
+            select.value = currentCowId;
+            updateCowView(livestock[currentCowId]);
+          }
+        }
+
+        Object.entries(livestock).forEach(([id, d]) => {
+          if (!d || d.latitude == null || d.longitude == null) return;
+          const lat = parseFloat(d.latitude);
+          const lng = parseFloat(d.longitude);
+          const marker = L.marker([lat, lng]).addTo(cowLayer);
+          marker.bindPopup(`<b>${id}</b>`);
+        });
+
+        if (cowLayer.getLayers().length > 0) {
+          map.fitBounds(cowLayer.getBounds().pad(0.1));
+        }
+      });
+
+      onValue(ref(db, "farmSystem/farm"), snap => {
+        const d = snap.val() || {};
+        document.getElementById("farmTemp").textContent  = d.temperature ?? "--";
+        document.getElementById("farmHum").textContent   = d.humidity ?? "--";
+        document.getElementById("soilMoist").textContent = d.soilMoisture ?? "--";
+        document.getElementById("rain").textContent      = d.rainDetected ? "Yes 🚨" : "No";
+        document.getElementById("pumpStat").textContent  = d.pumpStatus ?? "--";
+      });
+
+      onValue(ref(db, "farmSystem/irrigation"), snap => {
+        const d = snap.val() || {};
+        document.getElementById("irrMode").textContent    = d.mode ?? "--";
+        manualPumpState = !!d.manualPump;
+        document.getElementById("manualPump").textContent = manualPumpState ? "ON" : "OFF";
+        updatePumpButton();
+      });
+
+      onValue(ref(db, "farmSystem/alerts/boundaryBreach"), snap => {
+        const breach = !!snap.val();
+        const el = document.getElementById("alertContainer");
+        if (breach) {
+          el.textContent = "🚨 BOUNDARY BREACH!";
+          el.className = "alert danger";
+        } else {
+          el.textContent = "✅ All systems normal";
+          el.className = "alert safe";
+        }
+      });
+    }
+
+    function initApp() {
+      if (!window.firebaseReady) {
+        setTimeout(initApp, 100);
+        return;
+      }
+
+      const { db, ref, onValue, set, get, remove } = window._firebase;
+
+      window.togglePump = () => {
+        set(ref(db, "farmSystem/irrigation/manualPump"), !manualPumpState);
+      };
+
+      window.loadCow = async () => {
+        const select = document.getElementById("cowSelect");
+        const id = select.value;
+        if (!id) return;
+        currentCowId = id;
+        const snap = await get(ref(db, "farmSystem/livestock/" + currentCowId));
+        updateCowView(snap.val());
+        document.getElementById("cowActionStatus").textContent = "Loaded " + id;
+      };
+
+      window.newCow = () => {
+        currentCowId = "";
+        const select = document.getElementById("cowSelect");
+        if (select) select.value = "";
+        updateCowView(null);
+        document.getElementById("cowActionStatus").textContent = "New cow entry";
+      };
+
+      window.saveCow = async () => {
+        const id      = document.getElementById("cowIdInput").value.trim();
+        const name    = document.getElementById("cowNameInput").value.trim();
+        const vacc    = document.getElementById("cowVaccInput").value.trim();
+        const disease = document.getElementById("cowDiseaseInput").value.trim();
+        const notes   = document.getElementById("cowNotesInput").value.trim();
+        const status  = document.getElementById("cowSaveStatus");
+
+        if (!id) {
+          status.textContent = "Cow ID required (e.g. cow1)";
+          return;
+        }
+
+        status.textContent = "Saving...";
+
+        try {
+          await set(ref(db, "farmSystem/livestock/" + id + "/name"),           name || id);
+          await set(ref(db, "farmSystem/livestock/" + id + "/lastVaccinated"), vacc);
+          await set(ref(db, "farmSystem/livestock/" + id + "/previousDisease"),disease);
+          await set(ref(db, "farmSystem/livestock/" + id + "/notes"),          notes);
+
+          currentCowId = id;
+          document.getElementById("cowActionStatus").textContent = "Selected: " + id;
+          status.textContent = "Saved ✔";
+          setTimeout(() => status.textContent = "", 2000);
+        } catch (e) {
+          console.error("SAVE COW ERROR:", e);
+          status.textContent = "Error saving";
+        }
+      };
+
+      window.deleteCow = async () => {
+        const select = document.getElementById("cowSelect");
+        const id = select.value;
+        const status = document.getElementById("cowActionStatus");
+
+        if (!id) {
+          status.textContent = "No cow selected";
+          return;
+        }
+        if (!confirm("Delete " + id + " and all its details?")) return;
+
+        status.textContent = "Deleting...";
+        try {
+          await remove(ref(db, "farmSystem/livestock/" + id));
+          status.textContent = "Deleted ✔";
+          currentCowId = "";
+          updateCowView(null);
+          setTimeout(() => status.textContent = "", 2000);
+        } catch (e) {
+          console.error(e);
+          status.textContent = "Error deleting";
+        }
+      };
+
+      window.addEventListener("load", () =>
+        initDashboard(db, ref, onValue, set, get, remove)
+      );
+    }
+
+    initApp();
+  </script>
+</body>
+</html>
