@@ -1,1 +1,56 @@
+#include <esp_now.h>
+#include <WiFi.h>
+
+typedef struct {
+  float temperature;
+  float activity;
+  float latitude;
+  float longitude;
+} CowData;
+
+CowData incomingData;
+
+/* NEW callback format for ESP32 core 3.x */
+
+void onDataRecv(const esp_now_recv_info *info, const uint8_t *data, int len)
+{
+  memcpy(&incomingData, data, sizeof(incomingData));
+
+  Serial.println("---- Data Received ----");
+
+  Serial.print("Temperature: ");
+  Serial.println(incomingData.temperature);
+
+  Serial.print("Activity: ");
+  Serial.println(incomingData.activity);
+
+  Serial.print("Latitude: ");
+  Serial.println(incomingData.latitude, 6);
+
+  Serial.print("Longitude: ");
+  Serial.println(incomingData.longitude, 6);
+
+  Serial.println("-----------------------");
+}
+
+void setup()
+{
+  Serial.begin(115200);
+
+  WiFi.mode(WIFI_STA);
+
+  if (esp_now_init() != ESP_OK)
+  {
+    Serial.println("ESP-NOW Init Failed");
+    return;
+  }
+
+  esp_now_register_recv_cb(onDataRecv);
+
+  Serial.println("Receiver Ready");
+}
+
+void loop()
+{
+}
 
