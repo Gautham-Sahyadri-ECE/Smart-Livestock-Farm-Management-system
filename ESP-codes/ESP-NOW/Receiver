@@ -1,8 +1,25 @@
 #include <esp_now.h>
 #include <WiFi.h>
+#include "esp_wifi.h"
+
+// Firebase 
+#include <Firebase_ESP_Client.h>
+
+#define WIFI_SSID      "Abcd"
+#define WIFI_PASSWORD  "12345678"
+
+// Firebase (adyar-farms)
+#define API_KEY        "AIzaSyC-uYeWAQOtZYwXBDUgbT6RUvNmFUjpUYU"
+#define DATABASE_URL   "https://adyar-farms-default-rtdb.asia-southeast1.firebasedatabase.app/"
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
 
 typedef struct {
   float temperature;
+  float humidity;
   float activity;
   float latitude;
   float longitude;
@@ -10,47 +27,145 @@ typedef struct {
 
 CowData incomingData;
 
-/* NEW callback format for ESP32 core 3.x */
+float lat1 = 12.866050;
+float lat2 = 12.866050;
+float lat3 = 12.865950;
+float lat4 = 12.865950;
 
-void onDataRecv(const esp_now_recv_info *info, const uint8_t *data, int len)
-{
-  memcpy(&incomingData, data, sizeof(incomingData));
+float lon1 = 74.924600;
+float lon2 = 74.924700;
+float lon3 = 74.924700;
+float lon4 = 74.924600;
 
-  Serial.println("---- Data Received ----");
+// Dummy base location
+float baseLat = 12.866000;
+float baseLon = 74.924650;
 
-  Serial.print("Temperature: ");
-  Serial.println(incomingData.temperature);
+// Geofence helper 
+bool insideFarm(float lat, float lon) {
+  float minLat = min(min(lat1, lat2), min(lat3, lat4));
+  float maxLat = max(max(lat1, lat2), max(lat3, lat4));
 
-  Serial.print("Activity: ");
-  Serial.println(incomingData.activity);
+  float minLon = min(min(lon1, lon2), min(lon3, lon4));
+  float maxLon = max(max(lon1, lon2), max(lon3, lon4));
 
-  Serial.print("Latitude: ");
-  Serial.println(incomingData.latitude, 6);
+  if (lat >= minLat && lat <= maxLat &&
+      lon >= minLon && lon <= maxLon)
+    return true;
 
-  Serial.print("Longitude: ");
-  Serial.println(incomingData.longitude, 6);
-
-  Serial.println("-----------------------");
+  return false;
 }
 
-void setup()
-{
+// Wi-Fi + Firebase init 
+void initWiFi() {
+  WiFi.mode(WIFI_STA);
+  Serial.print("Connecting to WiFi");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected, IP: " + WiFi.localIP().toString());
+}
+
+void initFirebase() {
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+
+  Serial.println("Firebase initialized");
+}
+
+// ESP-NOW receive callback
+void onDataRecv(const esp_now_recv_info *info, const uint8_t *data, int len) {
+  memcpy(&incomingData, data, sizeof(incomingData));
+
+  Serial.println("\n====== Cow Data Received ======");
+  Serial.print("Temperature: "); Serial.println(incomingData.temperature);
+  Serial.print("Humidity: ");    Serial.println(incomingData.humidity);
+  Serial.print("Activity: ");    Serial.println(incomingData.activity);
+
+  // Manual GPS override via Serial
+  bool manual = false;
+  if (Serial.available()) {
+    String gps = Serial.readStringUntil('\n');
+    int comma = gps.indexOf(',');
+    if (comma > 0) {
+      incomingData.latitude  = gps.substring(0, comma).toFloat();
+      incomingData.longitude = gps.substring(comma + 1).toFloat();
+      manual = true;
+      Serial.println("Manual GPS applied");
+    }
+  }
+
+  // Automatic dummy GPS around baseLat/baseLon
+  if (!manual) {
+    incomingData.latitude  = baseLat + random(-3, 3) * 0.00001;
+    incomingData.longitude = baseLon + random(-3, 3) * 0.00001;
+  }
+
+  // Print coordinates
+  Serial.print("Latitude: ");  Serial.println(incomingData.latitude, 6);
+  Serial.print("Longitude: "); Serial.println(incomingData.longitude, 6);
+
+  // Geofence check
+  bool inside = insideFarm(incomingData.latitude, incomingData.longitude);
+
+  if (!inside) {
+    Serial.println("⚠ ALERT: Cow outside farm");
+  } else {
+    Serial.println("Cow inside farm");
+  }
+
+  Serial.println("================================");
+
+  //  PUSH TO FIREBASE 
+  if (Firebase.ready()) {
+    // Cow1 data (adapt to cow2 path if this is second cow)
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/livestock/cow1/temperature", incomingData.temperature);
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/livestock/cow1/humidity",    incomingData.humidity);
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/livestock/cow1/activity",    incomingData.activity);
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/livestock/cow1/latitude",    incomingData.latitude);
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/livestock/cow1/longitude",   incomingData.longitude);
+
+    // Boundary breach alert bit
+    Firebase.RTDB.setBool(&fbdo, "farmSystem/alerts/boundaryBreach", !inside);
+  }
+}
+
+void setup() {
   Serial.begin(115200);
 
-  WiFi.mode(WIFI_STA);
+  initWiFi();
+  initFirebase();
+esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE);
+  // Optionally write geofence center to Firebase (dashboard circle)
+  float centerLat = (lat1 + lat3) / 2.0;
+  float centerLon = (lon1 + lon2) / 2.0;
+  float approxRadius = 50.0; // meters (adjust as you like)
 
-  if (esp_now_init() != ESP_OK)
-  {
-    Serial.println("ESP-NOW Init Failed");
+  if (Firebase.ready()) {
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/geofence/centerLat", centerLat);
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/geofence/centerLon", centerLon);
+    Firebase.RTDB.setFloat(&fbdo, "farmSystem/geofence/radius",    approxRadius);
+  }
+
+  // ESP-NOW init
+  WiFi.mode(WIFI_STA);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("ESP-NOW init failed");
     return;
   }
 
   esp_now_register_recv_cb(onDataRecv);
 
-  Serial.println("Receiver Ready");
+  Serial.println("ESP-NOW Receiver + Geofence + Firebase Ready");
+  Serial.println("Enter coordinates like: 12.866120,74.924800");
 }
 
-void loop()
-{
+void loop() {
+  // nothing: all work handled in callback
 }
 
