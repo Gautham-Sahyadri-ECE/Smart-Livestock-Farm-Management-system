@@ -1,1 +1,109 @@
+#include <SPI.h>
+#include <LoRa.h>
+#include "DHT.h"
 
+/* LoRa Pins */
+#define LORA_SS 5
+#define LORA_RST 14
+#define LORA_DIO0 2
+
+/* Sensor Pins */
+#define DHTPIN 4
+#define DHTTYPE DHT22
+#define SOIL_PIN 34
+#define RAIN_PIN 35
+
+/* Relay */
+#define RELAY_PIN 26
+
+/* Deep Sleep */
+#define uS_TO_S_FACTOR 1000000
+#define TIME_TO_SLEEP 30
+
+/* Rain threshold */
+int rainThreshold = 1500;
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("Node Starting...");
+
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);   // Pump OFF initially
+
+  dht.begin();
+  delay(3000);
+
+  LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+
+  if (!LoRa.begin(433E6)) {
+    Serial.println("LoRa init failed!");
+    while (1);
+  }
+
+  Serial.println("LoRa Initialized");
+
+  /* Read Sensors */
+
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+
+  int soil = analogRead(SOIL_PIN);
+  int rain = analogRead(RAIN_PIN);
+
+  Serial.println("Sensor Readings:");
+
+  Serial.print("Temp: ");
+  Serial.println(temperature);
+
+  Serial.print("Humidity: ");
+  Serial.println(humidity);
+
+  Serial.print("Soil: ");
+  Serial.println(soil);
+
+  Serial.print("Rain: ");
+  Serial.println(rain);
+
+  /* RAIN BASED CONTROL */
+
+  if (rain < rainThreshold) {
+
+    Serial.println("Rain Detected → Pump OFF");
+    digitalWrite(RELAY_PIN, LOW);
+
+  } else {
+
+    Serial.println("No Rain → Pump ON");
+    digitalWrite(RELAY_PIN, HIGH);
+
+  }
+
+  /* Send Sensor Data */
+
+  String packet = "Node1," +
+                  String(temperature) + "," +
+                  String(humidity) + "," +
+                  String(soil) + "," +
+                  String(rain);
+
+  Serial.println("Sending Packet:");
+  Serial.println(packet);
+
+  LoRa.beginPacket();
+  LoRa.print(packet);
+  LoRa.endPacket();
+
+  delay(30000);  // pump runs 30 seconds
+
+  Serial.println("Sleeping for 30 seconds...");
+
+  esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+  esp_deep_sleep_start();
+}
+
+void loop() {}
