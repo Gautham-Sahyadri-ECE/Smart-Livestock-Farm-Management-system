@@ -124,18 +124,16 @@ smart-livestock-system │ ├── transmitter-node │   └── sensor_nod
 - Veterinary monitoring  
 - Precision agriculture  
 
----
-
-## 🎥 Demo
-
-[Add your demo video link here]
 
 ---
 
 ## 👨‍💻 Team
 
 - Pratham Shetty  
-- [Add teammates]
+- Gowtham N
+- Prajwal P
+- Dheeraj
+- Chandan
 
 ---
 
