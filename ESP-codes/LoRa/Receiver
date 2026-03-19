@@ -1,1 +1,90 @@
+#include <SPI.h>
+#include <LoRa.h>
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
 
+#define LORA_SS   5
+#define LORA_RST  14
+#define LORA_DIO0 2
+
+#define WIFI_SSID      "Abcd"
+#define WIFI_PASSWORD  "12345678"
+
+#define API_KEY        "AIzaSyC-uYeWAQOtZYwXBDUgbT6RUvNmFUjpUYU"
+#define DATABASE_URL   "https://adyar-farms-default-rtdb.asia-southeast1.firebasedatabase.app/"
+
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+void initWiFi() {
+  Serial.print("Connecting to WiFi");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+}
+
+void initFirebase() {
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+  Serial.println("Firebase initialized");
+}
+
+void setup() {
+  Serial.begin(115200);
+  initWiFi();
+  initFirebase();
+
+  LoRa.setPins(LORA_SS, LORA_RST, LORA_DIO0);
+  if (!LoRa.begin(433E6)) {
+    Serial.println("LoRa init failed!");
+    while (1);
+  }
+  Serial.println("LoRa Receiver + Firebase Ready");
+}
+
+void loop() {
+  int packetSize = LoRa.parsePacket();
+  if (packetSize) {
+    String received = "";
+    while (LoRa.available()) received += (char)LoRa.read();
+
+    Serial.print("Received: ");
+    Serial.println(received);
+
+    int first  = received.indexOf(',');
+    int second = received.indexOf(',', first + 1);
+    int third  = received.indexOf(',', second + 1);
+    int fourth = received.indexOf(',', third + 1);
+
+    if (first > 0 && second > 0 && third > 0 && fourth > 0) {
+      String node = received.substring(0, first);
+      float temp  = received.substring(first + 1,  second).toFloat();
+      float hum   = received.substring(second + 1, third).toFloat();
+      int soil    = received.substring(third + 1,  fourth).toInt();
+      int rain    = received.substring(fourth + 1).toInt();
+
+      Serial.println("Parsed:");
+      Serial.println(node);
+      Serial.println(temp);
+      Serial.println(hum);
+      Serial.println(soil);
+      Serial.println(rain);
+
+      if (Firebase.ready()) {
+        Firebase.RTDB.setFloat(&fbdo, "farmSystem/farm/temperature", temp);
+        Firebase.RTDB.setFloat(&fbdo, "farmSystem/farm/humidity",    hum);
+        Firebase.RTDB.setInt  (&fbdo, "farmSystem/farm/soilMoisture",soil);
+        Firebase.RTDB.setBool (&fbdo, "farmSystem/farm/rainDetected",rain > 0);
+        Firebase.RTDB.setString(&fbdo,"farmSystem/farm/sourceNode",  node);
+      }
+    } else {
+      Serial.println("Packet format error");
+    }
+  }
+}
