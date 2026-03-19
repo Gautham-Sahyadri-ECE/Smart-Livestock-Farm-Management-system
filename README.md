@@ -37,10 +37,10 @@ Cow Node (ESP32 + Sensors + GPS) │ │  ESP-NOW / LoRa Communication ▼ Base 
 ## ⚙️ Hardware Components
 
 - ESP32 DevKit (Node + Base Station)  
-- GPS Module (Neo-6M or similar)  
-- Temperature Sensor (DHT22 / DS18B20)  
-- Motion Sensor (optional - accelerometer)  
-- LoRa Module (RA-02) *(optional for long range)*  
+- GPS Module (Neo-6M)  
+- Temperature Sensor   
+- Motion Sensor 
+- LoRa Module (RA-02) 
 - Power Supply / Battery  
 - Jumper wires & enclosure  
 
@@ -55,7 +55,7 @@ Cow Node (ESP32 + Sensors + GPS) │ │  ESP-NOW / LoRa Communication ▼ Base 
 - Range: ~200–300 meters  
 
 ### 🔹 LoRa (For Real Deployment)
-- Long-range communication (1–5 km)  
+- Long-range communication   
 b- Suitable for large farms  
 - Lower data rate  
 
@@ -130,7 +130,7 @@ smart-livestock-system │ ├── transmitter-node │   └── sensor_nod
 ## 👨‍💻 Team
 
 - Pratham Shetty  
-- Gowtham N
+- Gautham N
 - Prajwal P
 - Dheeraj
 - Chandan
