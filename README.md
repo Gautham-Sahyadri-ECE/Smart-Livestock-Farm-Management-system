@@ -48,7 +48,7 @@ Cow Node (ESP32 + Sensors + GPS) │ │  ESP-NOW / LoRa Communication ▼ Base 
 
 ## 📡 Communication Methods
 
-### 🔹 ESP-NOW (Recommended for Prototype)
+### 🔹 ESP-NOW 
 - Direct ESP32 ↔ ESP32 communication  
 - Low latency  
 - No internet required  
